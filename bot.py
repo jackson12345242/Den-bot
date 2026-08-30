@@ -51,7 +51,7 @@ EMBED_COLOR = discord.Color(0x3498DB)
 
 # The only two Discord user IDs allowed to run slash commands, and who get
 # DMed whenever a tracked balance changes.
-ALLOWED_USER_IDS = {1318513875372605481, 645395932812279844}
+ALLOWED_USER_IDS = {1318513875372605481}
 
 # If BlockCypher starts rate-limiting us (HTTP 429), back off from hitting it
 # again for this many seconds instead of retrying every single poll cycle -
