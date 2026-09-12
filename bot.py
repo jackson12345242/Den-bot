@@ -8,6 +8,9 @@ changes by at least MIN_NOTIFY_USD, and offers /balance, /wallet, and
 Config comes from environment variables:
     DISCORD_TOKEN        - the bot's token
     DISCORD_USER_ID       - your Discord user ID (numeric), who gets DMed
+                            (this is also the ONLY user allowed to run the
+                            owner-only commands - see owner_only() below.
+                            /wallet is open to everyone.)
     LTC_ADDRESSES          - comma-separated list of Litecoin addresses
     BSC_USDT_ADDRESSES     - comma-separated list of BEP20 USDT addresses
     POLL_SECONDS            - how often to check, default 45
@@ -16,13 +19,14 @@ Config comes from environment variables:
 Balances persist in balances.json (created automatically) so restarts don't
 cause false "change" notifications.
 
-Access control: only the Discord user with ID ALLOWED_USER_ID (below) can
-run /balance, /imlimited, and the ?balances / ?checknow prefix commands.
+Access control: only the Discord user with ID DISCORD_USER_ID can run
+/balance, /imlimited, and the ?balances / ?checknow prefix commands.
 /wallet is open to everyone so anyone can view the addresses to send to.
 """
 
 import asyncio
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -31,10 +35,16 @@ import aiohttp
 import discord
 from discord.ext import commands, tasks
 
-BALANCES_PATH = "balances.json"
+# discord.py logs every gateway reconnect/resume at INFO level, which on a
+# long-running bot adds up to dozens of lines a day that all say the same
+# thing and drown out anything actually worth seeing. Reconnects/resumes on
+# their own aren't errors -- Discord gateway connections drop and resume
+# periodically as a matter of course -- so this just quiets that specific
+# noise down to WARNING+ (actual connection problems still show up).
+logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+logging.getLogger("discord.client").setLevel(logging.WARNING)
 
-# The only Discord user allowed to run the owner-restricted commands on this bot.
-ALLOWED_USER_ID = 1318513875372605481
+BALANCES_PATH = "balances.json"
 
 # BEP20 (Binance-Peg) USDT contract address on BNB Smart Chain
 USDT_BEP20_CONTRACT = "0x55d398326f99059fF775485246999027B3197955"
@@ -95,18 +105,18 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 
 # ---------------------------------------------------------------------------
-# Access control - only ALLOWED_USER_ID may run owner-restricted commands
+# Access control - only DISCORD_USER_ID may run owner-restricted commands
 # ---------------------------------------------------------------------------
 
 def owner_only():
-    """App-command check that rejects everyone except ALLOWED_USER_ID.
+    """App-command check that rejects everyone except DISCORD_USER_ID.
 
     Since User Install lets anyone add this bot to their own account and DM
     it, this check is what actually keeps these commands private - Discord
     itself has no allowlist for installs.
     """
     async def predicate(interaction: discord.Interaction) -> bool:
-        if interaction.user.id != ALLOWED_USER_ID:
+        if interaction.user.id != DISCORD_USER_ID:
             await interaction.response.send_message(
                 "You're not authorized to use this bot.", ephemeral=True
             )
@@ -451,8 +461,8 @@ class WalletView(discord.ui.View):
         if not usdt_address:
             self.usdt_button.disabled = True
 
-    # Open to everyone - no ALLOWED_USER_ID check, so anyone can tap and
-    # reveal the address to send to.
+    # Open to everyone - no owner check, so anyone can tap and reveal the
+    # address to send to.
     @discord.ui.button(label="LTC", style=discord.ButtonStyle.secondary, emoji="🪙")
     async def ltc_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(self.ltc_address, ephemeral=True)
@@ -528,7 +538,7 @@ async def on_ready():
 @bot.command(name="balances")
 async def balances_cmd(ctx):
     """?balances - show current known balances"""
-    if ctx.author.id != ALLOWED_USER_ID:
+    if ctx.author.id != DISCORD_USER_ID:
         await ctx.send("You're not authorized to use this bot.")
         return
 
@@ -566,7 +576,7 @@ async def balances_cmd(ctx):
 @bot.command(name="checknow")
 async def checknow_cmd(ctx):
     """?checknow - force an immediate balance check"""
-    if ctx.author.id != ALLOWED_USER_ID:
+    if ctx.author.id != DISCORD_USER_ID:
         await ctx.send("You're not authorized to use this bot.")
         return
 
